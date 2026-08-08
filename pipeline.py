@@ -127,6 +127,13 @@ def run_pipeline() -> List[Dict[str, Any]]:
             
             # Update place properties with details
             place["website_uri"] = details.get("website_uri") or place.get("website_uri")
+            
+            # Double check: If no website is listed in OpenStreetMap details, perform a live online verification
+            if not place["website_uri"]:
+                online_website = geoapify_places.verify_website_online(place["name"], city)
+                if online_website:
+                    place["website_uri"] = online_website
+                    
             place["phone_number"] = details.get("phone_number") or place.get("phone_number")
             place["email"] = details.get("email")
             place["opening_hours"] = details.get("opening_hours")

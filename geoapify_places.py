@@ -1,5 +1,7 @@
 import requests
 import time
+import urllib.parse
+import re
 from typing import List, Dict, Any, Optional
 import config
 
@@ -297,3 +299,56 @@ def _get_mock_place_details(place_id: str) -> Dict[str, Any]:
             break
             
     return matching_detail
+
+# List of common business directories to ignore during online verification
+DIRECTORY_DOMAINS = {
+    "yelp.com", "tripadvisor.com", "facebook.com", "instagram.com", "twitter.com",
+    "foursquare.com", "yellowpages.com", "mapquest.com", "doordash.com", "grubhub.com",
+    "ubereats.com", "opentable.com", "menupix.com", "charlottesgotalot.com", "groupon.com",
+    "wikipedia.org", "wikidata.org", "singleplatform.com", "sirved.com", "locu.com",
+    "zagat.com", "allmenus.com", "zomato.com", "menuism.com", "findagrave.com",
+    "local.yahoo.com", "bing.com", "mapquest.com", "realtor.com", "zillow.com", "trulia.com"
+}
+
+def verify_website_online(name: str, city: str) -> Optional[str]:
+    """
+    Performs a lightweight online search to check if the business has an active website.
+    Filters out common business directories and returns the website URL if found.
+    """
+    if config.USE_MOCK_DATA:
+        return None
+        
+    query = f"{name} {city}"
+    search_url = f"https://html.duckduckgo.com/html/?q={urllib.parse.quote(query)}"
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/120.0.0.0 Safari/537.36"
+        )
+    }
+    
+    try:
+        response = requests.get(search_url, headers=headers, timeout=10)
+        if response.status_code != 200:
+            return None
+            
+        html = response.text
+        # Find all link redirects (DuckDuckGo redirects use uddg=URL)
+        raw_urls = re.findall(r'uddg=([^&"\']+)', html)
+        
+        for raw_url in raw_urls[:3]:  # Check top 3 search results
+            url = urllib.parse.unquote(raw_url)
+            domain = urllib.parse.urlparse(url).netloc.lower()
+            if domain.startswith("www."):
+                domain = domain[4:]
+                
+            # If the domain is not in the directory blacklist, it's a custom website!
+            if domain and domain not in DIRECTORY_DOMAINS and "." in domain:
+                print(f"[Verification] Found custom website '{url}' for '{name}' via web search.")
+                return url
+                
+    except Exception as e:
+        print(f"Exception during online website verification for {name}: {str(e)}")
+        
+    return None
