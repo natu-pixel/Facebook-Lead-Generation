@@ -1,0 +1,57 @@
+name: On-Demand Lead Generation
+
+on:
+  workflow_dispatch:
+    inputs:
+      category:
+        description: 'Business Category to search (e.g. restaurant, bakery, dentist)'
+        required: true
+        default: 'restaurant'
+      city:
+        description: 'Target City to search in (e.g. Charlotte, Columbus, Tampa)'
+        required: true
+        default: 'Charlotte'
+
+jobs:
+  run-leads:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          persist-credentials: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Lead Pipeline
+        env:
+          GEOAPIFY_API_KEY: ${{ secrets.GEOAPIFY_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          NOTIFICATION_CHANNEL: telegram
+          USE_MOCK_DATA: false
+          TARGET_COUNTRY: "United States"
+          TARGET_CITIES: ${{ github.event.inputs.city }}
+          TARGET_CATEGORY: ${{ github.event.inputs.category }}
+          MIN_REVIEWS: 20
+          MIN_RATING: 4.0
+          REQUIRE_WEBSITE: false
+          REQUIRE_PHONE: true
+        run: python run.py --live
+
+      - name: Commit and Push Database changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add leads.db
+          # Only commit if changes are made to the database, to avoid workflow failure
+          git commit -m "Update leads database cache [skip ci]" || echo "No changes to database"
+          git push
